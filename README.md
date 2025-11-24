@@ -56,8 +56,7 @@ Google Gemini API anahtarı almak için: [Google AI Studio](https://makersuite.g
 ### 3. Sunucuyu Başlatın
 
 ```bash
-# Backend dizininden çalıştırın
-cd c:\Users\HP\Desktop\4.SINIF\MİNİNG\RAG\StudyRAG
+# Proje dizininde çalıştırın
 uvicorn backend.main:app --reload
 ```
 
