@@ -18,6 +18,7 @@ from backend.config import (
 )
 from backend.rag_pipeline import get_rag_pipeline
 from backend.retrieval_service import get_retrieval_service
+from backend.study_plan_generator import get_study_plan_generator
 
 
 # Pydantic Models
@@ -47,6 +48,31 @@ class QuestionResponse(BaseModel):
     num_sources: Optional[int] = None
 
 
+class StudyDay(BaseModel):
+    """Single day in the generated study plan"""
+    day_index: int
+    title: str
+    focus_topics: List[str]
+    goals: List[str]
+    estimated_minutes: int
+    notes: Optional[str] = None
+
+
+class StudyPlanRequest(BaseModel):
+    """Request model for generating a study plan"""
+    days: int = Field(default=7, ge=1, le=30, description="Plan süresi (gün)")
+    daily_minutes: int = Field(default=120, ge=30, le=600, description="Günlük çalışma süresi (dakika)")
+    focus: Optional[str] = Field(default=None, description="Özel odaklanmak istediğin konu (opsiyonel)")
+
+
+class StudyPlanResponse(BaseModel):
+    """Response model for study plan generation"""
+    total_days: int
+    daily_minutes: int
+    strategy_summary: str
+    days: List[StudyDay]
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title=APP_NAME,
@@ -67,6 +93,7 @@ app.add_middleware(
 # Initialize services
 rag_pipeline = get_rag_pipeline()
 retrieval_service = get_retrieval_service()
+study_plan_generator = get_study_plan_generator()
 
 
 @app.get("/")
@@ -177,6 +204,36 @@ async def load_existing_vectorstore(vectorstore_name: str = Form(default="defaul
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading vector store: {str(e)}")
+
+
+@app.post("/study-plan", response_model=StudyPlanResponse)
+async def generate_study_plan(request: StudyPlanRequest):
+    """
+    Generate a study plan based on the uploaded document and user preferences.
+    """
+    try:
+        # Check if vectorstore is loaded
+        if rag_pipeline.vectorstore is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No document loaded. Please upload a PDF first using /upload endpoint."
+            )
+
+        plan_dict = study_plan_generator.generate_plan(
+            days=request.days,
+            daily_minutes=request.daily_minutes,
+            focus=request.focus,
+        )
+
+        # Ensure required fields exist
+        plan_dict.setdefault("total_days", request.days)
+        plan_dict.setdefault("daily_minutes", request.daily_minutes)
+
+        return StudyPlanResponse(**plan_dict)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating study plan: {str(e)}")
 
 
 @app.get("/health")
