@@ -1,6 +1,6 @@
 # StudyRAG - RAG-Based Study Assistant 🎓
 
-**Backend RAG Pipeline with Google Gemini API**
+
 
 StudyRAG, Türkçe ders notlarınızı (PDF) yükleyip, yapay zeka destekli soru-cevap sistemi ile çalışmanıza yardımcı olan bir RAG (Retrieval-Augmented Generation) uygulamasıdır.
 
