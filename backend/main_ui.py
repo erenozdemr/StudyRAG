@@ -146,7 +146,7 @@ async def ui_page() -> HTMLResponse:
         <div class="container">
             <h1>StudyRAG UI <span class="badge">Beta</span></h1>
             <p style="font-size:14px;color:#9ca3af;margin-top:4px;">
-                PDF yükle, vektör store oluştur, ders notlarına Türkçe sorular sor ve çalışma planı hazırla.
+                PDF yükle, vektör store oluştur, ders notlarına Türkçe sorular sor, quiz oluştur ve çalışma planı hazırla.
             </p>
 
             <div class="section">
@@ -191,7 +191,44 @@ async def ui_page() -> HTMLResponse:
             </div>
 
             <div class="section">
-                <h2>3. Çalışma Planı Oluştur</h2>
+                <h2>3. Quiz Oluştur</h2>
+
+                <div class="row">
+                    <div style="flex: 0 0 180px;">
+                        <label>Quiz Türü</label>
+                        <select id="quizType" style="width:100%;padding:10px 12px;margin-top:4px;margin-bottom:12px;border-radius:8px;border:1px solid #1f2937;background:#020617;color:#e5e7eb;font-size:14px;">
+                            <option value="multiple_choice">Çoktan Seçmeli</option>
+                            <option value="true_false">Doğru-Yanlış</option>
+                            <option value="open_ended">Açık Uçlu</option>
+                            <option value="mixed">Karma</option>
+                        </select>
+                    </div>
+                    <div style="flex: 0 0 120px;">
+                        <label>Soru Sayısı</label>
+                        <input id="quizNumQuestions" type="number" min="1" max="20" value="5" />
+                    </div>
+                    <div style="flex: 0 0 140px;">
+                        <label>Zorluk</label>
+                        <select id="quizDifficulty" style="width:100%;padding:10px 12px;margin-top:4px;margin-bottom:12px;border-radius:8px;border:1px solid #1f2937;background:#020617;color:#e5e7eb;font-size:14px;">
+                            <option value="easy">Kolay</option>
+                            <option value="medium" selected>Orta</option>
+                            <option value="hard">Zor</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label>Konu Odağı (opsiyonel)</label>
+                <input id="quizTopic" type="text" placeholder="örn: türev kuralları" />
+
+                <button id="quizBtn">
+                    <span>📝 Quiz Oluştur</span>
+                </button>
+                <div id="quizStatus" class="status"></div>
+                <div id="quizOutput" class="output" style="display:none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>4. Çalışma Planı Oluştur</h2>
 
                 <div class="row">
                     <div style="flex: 0 0 120px;">
@@ -228,6 +265,10 @@ async def ui_page() -> HTMLResponse:
             const planBtn = document.getElementById("planBtn");
             const planStatus = document.getElementById("planStatus");
             const planOutput = document.getElementById("planOutput");
+
+            const quizBtn = document.getElementById("quizBtn");
+            const quizStatus = document.getElementById("quizStatus");
+            const quizOutput = document.getElementById("quizOutput");
 
             uploadBtn.addEventListener("click", async () => {
                 const fileInput = document.getElementById("pdfFile");
@@ -375,6 +416,77 @@ async def ui_page() -> HTMLResponse:
                     planOutput.textContent = String(err);
                 } finally {
                     planBtn.disabled = false;
+                }
+            });
+
+            quizBtn.addEventListener("click", async () => {
+                const quizTypeInput = document.getElementById("quizType");
+                const numQuestionsInput = document.getElementById("quizNumQuestions");
+                const difficultyInput = document.getElementById("quizDifficulty");
+                const topicInput = document.getElementById("quizTopic");
+
+                const quizType = quizTypeInput.value;
+                const numQuestions = parseInt(numQuestionsInput.value || "5", 10);
+                const difficulty = difficultyInput.value;
+                const topic = topicInput.value.trim() || null;
+
+                quizBtn.disabled = true;
+                quizStatus.textContent = "Quiz oluşturuluyor...";
+                quizOutput.style.display = "none";
+                quizOutput.innerHTML = "";
+
+                try {
+                    const res = await fetch("/generate-quiz", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            quiz_type: quizType,
+                            num_questions: numQuestions,
+                            difficulty,
+                            topic
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Quiz oluşturma hatası");
+                    }
+
+                    quizStatus.textContent = "Quiz hazır ✅";
+                    quizOutput.style.display = "block";
+                    
+                    // Format quiz nicely
+                    let html = `<strong>Quiz Türü:</strong> ${data.quiz_type} | <strong>Zorluk:</strong> ${data.difficulty} | <strong>Soru Sayısı:</strong> ${data.num_questions}<br/><br/>`;
+                    
+                    if (data.questions && Array.isArray(data.questions)) {
+                        data.questions.forEach((q, idx) => {
+                            html += `<div style="margin-bottom:16px;padding:12px;background:#0f172a;border-radius:8px;border:1px solid #1f2937;">`;
+                            html += `<strong>Soru ${q.id}:</strong> ${q.question}<br/>`;
+                            if (q.choices && q.choices.length > 0) {
+                                html += `<div style="margin:8px 0;">`;
+                                q.choices.forEach(c => {
+                                    html += `<div class="chip">${c}</div>`;
+                                });
+                                html += `</div>`;
+                            }
+                            html += `<div style="color:#22c55e;font-size:12px;">✓ Doğru Cevap: ${q.correct_answer}</div>`;
+                            html += `<div style="color:#9ca3af;font-size:11px;margin-top:4px;">📖 ${q.explanation}</div>`;
+                            html += `</div>`;
+                        });
+                    }
+                    
+                    if (data.note) {
+                        html += `<div style="color:#f59e0b;font-size:11px;margin-top:8px;">⚠️ ${data.note}</div>`;
+                    }
+                    
+                    quizOutput.innerHTML = html;
+                } catch (err) {
+                    quizStatus.textContent = "Hata ❌";
+                    quizOutput.style.display = "block";
+                    quizOutput.textContent = String(err);
+                } finally {
+                    quizBtn.disabled = false;
                 }
             });
         </script>

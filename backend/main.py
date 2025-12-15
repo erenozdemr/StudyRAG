@@ -19,6 +19,7 @@ from backend.config import (
 from backend.rag_pipeline import get_rag_pipeline
 from backend.retrieval_service import get_retrieval_service
 from backend.study_plan_generator import get_study_plan_generator
+from backend.quiz_generator import get_quiz_generator
 
 
 # Pydantic Models
@@ -73,6 +74,36 @@ class StudyPlanResponse(BaseModel):
     days: List[StudyDay]
 
 
+class QuizQuestion(BaseModel):
+    """Single question in a quiz"""
+    id: int
+    type: str  # multiple_choice, true_false, open_ended
+    question: str
+    choices: Optional[List[str]] = None
+    correct_answer: str
+    explanation: str
+    source_page: Optional[int] = None
+
+
+class QuizRequest(BaseModel):
+    """Request model for generating a quiz"""
+    quiz_type: str = Field(default="multiple_choice", description="Quiz türü: multiple_choice, true_false, open_ended, mixed")
+    num_questions: int = Field(default=5, ge=1, le=20, description="Soru sayısı")
+    difficulty: str = Field(default="medium", description="Zorluk seviyesi: easy, medium, hard")
+    topic: Optional[str] = Field(default=None, description="Özel konu odağı (opsiyonel)")
+
+
+class QuizResponse(BaseModel):
+    """Response model for quiz generation"""
+    quiz_type: str
+    difficulty: str
+    num_questions: int
+    topic: Optional[str] = None
+    questions: List[QuizQuestion]
+    answer_key: Dict[str, str]
+    note: Optional[str] = None
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title=APP_NAME,
@@ -94,6 +125,7 @@ app.add_middleware(
 rag_pipeline = get_rag_pipeline()
 retrieval_service = get_retrieval_service()
 study_plan_generator = get_study_plan_generator()
+quiz_generator = get_quiz_generator()
 
 
 @app.get("/")
@@ -106,6 +138,8 @@ async def root():
         "endpoints": {
             "upload": "/upload - Upload PDF and create vector store",
             "ask": "/ask - Ask questions about uploaded document",
+            "generate-quiz": "/generate-quiz - Generate quiz from document",
+            "study-plan": "/study-plan - Generate study plan",
             "docs": "/docs - Interactive API documentation"
         }
     }
@@ -234,6 +268,38 @@ async def generate_study_plan(request: StudyPlanRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating study plan: {str(e)}")
+
+
+@app.post("/generate-quiz", response_model=QuizResponse)
+async def generate_quiz(request: QuizRequest):
+    """
+    Generate a quiz based on the uploaded document.
+    
+    - **quiz_type**: Type of quiz (multiple_choice, true_false, open_ended, mixed)
+    - **num_questions**: Number of questions to generate (1-20)
+    - **difficulty**: Difficulty level (easy, medium, hard)
+    - **topic**: Optional specific topic to focus on
+    """
+    try:
+        # Check if vectorstore is loaded
+        if rag_pipeline.vectorstore is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No document loaded. Please upload a PDF first using /upload endpoint."
+            )
+
+        quiz_dict = quiz_generator.generate_quiz(
+            quiz_type=request.quiz_type,
+            num_questions=request.num_questions,
+            difficulty=request.difficulty,
+            topic=request.topic,
+        )
+
+        return QuizResponse(**quiz_dict)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating quiz: {str(e)}")
 
 
 @app.get("/health")
